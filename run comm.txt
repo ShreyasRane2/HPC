@@ -1,0 +1,2 @@
+g++ -o msort -fopenmp msort.cpp
+./msort

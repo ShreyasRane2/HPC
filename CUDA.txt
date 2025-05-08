@@ -1,0 +1,175 @@
+######################### Vecor_addition##################################
+
+step 1 - change the runtype
+
+step 2 - check cuda is available or not
+         !ls /usr/local/
+
+step3 - then run -  !which nvcc
+
+step 4 - !nvidia-smi
+
+step 5- run this code in one cell
+
+%%writefile vector_add.cu
+#include <iostream>
+#include <vector>
+#include <cuda_runtime.h>
+
+using namespace std;
+
+// CUDA kernel for vector addition
+global void vectorAdd(int* a, int* b, int* c, int size) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size) {
+        c[tid] = a[tid] + b[tid];
+    }
+}
+
+int main() {
+    int size;
+    cout << "Enter the size of the vectors: ";
+    cin >> size;
+
+    vector<int> a(size), b(size), c(size);
+
+    cout << "Enter elements of vector A:\n";
+    for (int i = 0; i < size; i++) {
+        cin >> a[i];
+    }
+
+    cout << "Enter elements of vector B:\n";
+    for (int i = 0; i < size; i++) {
+        cin >> b[i];
+    }
+
+    int* dev_a, * dev_b, * dev_c;
+    cudaMalloc((void**)&dev_a, size * sizeof(int));
+    cudaMalloc((void**)&dev_b, size * sizeof(int));
+    cudaMalloc((void**)&dev_c, size * sizeof(int));
+
+    cudaMemcpy(dev_a, a.data(), size * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_b, b.data(), size * sizeof(int), cudaMemcpyHostToDevice);
+
+    int blockSize = 128;
+    int gridSize = (size + blockSize - 1) / blockSize;
+    vectorAdd<<<gridSize, blockSize>>>(dev_a, dev_b, dev_c, size);
+    cudaDeviceSynchronize();
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        cout << "CUDA error: " << cudaGetErrorString(err) << endl;
+        return -1;
+    }
+
+    cudaMemcpy(c.data(), dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
+
+    cout << "Result of vector addition:\n";
+    for (int i = 0; i < size; i++) {
+        cout << a[i] << " + " << b[i] << " = " << c[i] << endl;
+    }
+
+    cudaFree(dev_a);
+    cudaFree(dev_b);
+    cudaFree(dev_c);
+
+    return 0;
+}
+
+step 6 - for running the code run following command:
+	!nvcc -arch=sm_75 vector_add.cu -o vector_add
+	
+	!./vector_add
+
+
+############################################ Matric multiplication ##############################################
+
+
+%%writefile matmul.cu
+#include <iostream>
+#include <vector>
+#include <cuda_runtime.h>
+
+using namespace std;
+
+// CUDA kernel for matrix multiplication
+global void matrixMul(int* a, int* b, int* c, int rowsA, int colsA, int colsB) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < rowsA && col < colsB) {
+        int sum = 0;
+        for (int i = 0; i < colsA; i++) {
+            sum += a[row * colsA + i] * b[i * colsB + col];
+        }
+        c[row * colsB + col] = sum;
+    }
+}
+
+int main() {
+    int rowsA, colsA, rowsB, colsB;
+
+    cout << "Enter rows and columns for Matrix A: ";
+    cin >> rowsA >> colsA;
+
+    cout << "Enter rows and columns for Matrix B: ";
+    cin >> rowsB >> colsB;
+
+    if (colsA != rowsB) {
+        cout << "Matrix multiplication not possible: colsA != rowsB" << endl;
+        return -1;
+    }
+
+    // Host vectors
+    vector<int> a(rowsA * colsA), b(rowsB * colsB), c(rowsA * colsB);
+
+    // Input Matrix A
+    cout << "Enter elements of Matrix A:" << endl;
+    for (int i = 0; i < rowsA * colsA; ++i) {
+        cin >> a[i];
+    }
+
+    // Input Matrix B
+    cout << "Enter elements of Matrix B:" << endl;
+    for (int i = 0; i < rowsB * colsB; ++i) {
+        cin >> b[i];
+    }
+
+    // Device pointers
+    int *dev_a, *dev_b, *dev_c;
+
+    cudaMalloc((void**)&dev_a, rowsA * colsA * sizeof(int));
+    cudaMalloc((void**)&dev_b, rowsB * colsB * sizeof(int));
+    cudaMalloc((void**)&dev_c, rowsA * colsB * sizeof(int));
+
+    cudaMemcpy(dev_a, a.data(), rowsA * colsA * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_b, b.data(), rowsB * colsB * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Launch CUDA kernel
+    dim3 blockSize(16, 16);
+    dim3 gridSize((colsB + 15) / 16, (rowsA + 15) / 16);
+    matrixMul<<<gridSize, blockSize>>>(dev_a, dev_b, dev_c, rowsA, colsA, colsB);
+
+    // Copy result back
+    cudaMemcpy(c.data(), dev_c, rowsA * colsB * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // Output Result
+    cout << "Result Matrix:" << endl;
+    for (int i = 0; i < rowsA; ++i) {
+        for (int j = 0; j < colsB; ++j) {
+            cout << c[i * colsB + j] << " ";
+        }
+        cout << endl;
+    }
+
+    // Free memory
+    cudaFree(dev_a);
+    cudaFree(dev_b);
+    cudaFree(dev_c);
+
+    return 0;
+}
+
+!nvcc -arch=sm_70 matmul.cu -o matmul
+
+!./matmul
